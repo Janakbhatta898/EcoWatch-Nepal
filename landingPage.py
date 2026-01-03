@@ -1,3 +1,12 @@
+from tensorflow.keras.applications.efficientnet import preprocess_input
+import keras
+
+# Define the custom objects mapping
+custom_dict = {
+    'preprocess_input': preprocess_input
+}
+
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,6 +19,8 @@ from PIL import Image
 #import librosa
 #import cv2
 
+from audio_to_img import for_single_audio
+
 # --- MODEL LOADING (Placeholders) ---
 @st.cache_resource
 def load_vision_model():
@@ -18,8 +29,8 @@ def load_vision_model():
 
 @st.cache_resource
 def load_audio_model():
-    audio_model1 = tf.keras.models.load_model('./models/audio_forest.keras')
-    audio_model2 = tf.keras.models.load_model('./models/audio_multi_classification.keras')
+    audio_model1 = tf.keras.models.load_model('./models/audio_forest.keras', custom_objects=custom_dict)
+    audio_model2 = tf.keras.models.load_model('./models/audio_multi_classification.keras', custom_objects=custom_dict)
     return (audio_model1, audio_model2)
 
 
@@ -39,11 +50,33 @@ def run_vision_inference(file_buffer, is_video=False):
         # For video, you'd typically sample frames using cv2
         return np.random.uniform(0.5, 0.85), "Active Fire Front"
 
+import numpy as np
+
 def run_audio_inference(file_buffer):
-    """Passes audio to the Audio Model"""
-    # y, sr = librosa.load(file_buffer)
-    # prediction = audio_model.predict(y)
-    return np.random.uniform(0.7, 0.95), "Chainsaw/Cracking Sound"
+    
+    # Preprocess the audio
+    img_ready, y_raw, sr = for_single_audio(file_buffer)
+    img_ready = np.expand_dims(img_ready, axis=0)  
+
+    # Level 1: Binary detection (e.g., Is there an anomaly?)
+    y_pred1 = audio_model1.predict(img_ready)
+    confidence = float(y_pred1[0][0])
+    label = "natural"
+
+    # Level 2: Specific classification if Level 1 threshold is met
+    if confidence > 0.5:
+        y_pred2 = audio_model2.predict(img_ready)
+        
+        # Assuming audio_model2 returns a softmax array of classes
+        # e.g., [0.1, 0.8, 0.1] -> Class 1 (Chainsaw)
+        classes = ["fire", "Logging", "Poaching"]
+        class_idx = np.argmax(y_pred2[0])
+        label = classes[class_idx]
+        
+        # Update confidence to the specific class confidence
+        confidence = float(y_pred2[0][class_idx])
+
+    return confidence, label
 
 
 # Page config - MUST BE FIRST
