@@ -354,7 +354,7 @@ try:
                 st.info("No detections on this date.")
         else:
             st.warning("⚠️ No data available for analysis.")
-    
+    # comment
     # Footer
     st.markdown("---")
     st.markdown("""
