@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import pydeck as pdk
 from datetime import datetime, timedelta
+import tensorflow as tf
+# import torch
 import io
 from PIL import Image
 #import librosa
@@ -16,11 +18,14 @@ def load_vision_model():
 
 @st.cache_resource
 def load_audio_model():
-    # model = joblib.load('audio_model.pkl')
-    return "Audio Model Loaded"
+    audio_model1 = tf.keras.models.load_model('./models/audio_forest.keras')
+    audio_model2 = tf.keras.models.load_model('./models/audio_multi_classification.keras')
+    return (audio_model1, audio_model2)
+
+
 
 vision_model = load_vision_model()
-audio_model = load_audio_model()
+audio_model1, audio_model2 = load_audio_model()
 
 # --- HELPER FUNCTIONS FOR INFERENCE ---
 def run_vision_inference(file_buffer, is_video=False):
