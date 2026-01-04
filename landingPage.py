@@ -1,12 +1,12 @@
 from tensorflow.keras.applications.efficientnet import preprocess_input
 import keras
-
+from ultralytics import YOLO
+import os
 #dependency error to be resolved
 # Define the custom objects mapping
 custom_dict = {
     'preprocess_input': preprocess_input
 }
-
 
 import streamlit as st
 import pandas as pd
@@ -14,19 +14,22 @@ import numpy as np
 import pydeck as pdk
 from datetime import datetime, timedelta
 import tensorflow as tf
-# import torch
+import torch
 import io
 from PIL import Image
 #import librosa
-#import cv2
+import cv2
 
 from audio_to_img import for_single_audio
 
 # --- MODEL LOADING (Placeholders) ---
 @st.cache_resource
 def load_vision_model():
-    # model = torch.load('vision_model.pth') or tf.keras.models.load_model('model.h5')
-    return "Vision Model Loaded"
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+    model_path = os.path.join(base_path, 'models', 'best.pt')
+    model = YOLO(model_path)
+    return model
 
 @st.cache_resource
 def load_audio_model():
@@ -41,15 +44,28 @@ audio_model1, audio_model2 = load_audio_model()
 
 # --- HELPER FUNCTIONS FOR INFERENCE ---
 def run_vision_inference(file_buffer, is_video=False):
-    """Passes image or video to the Vision Model"""
     if not is_video:
+        #loading the image from the buffer
         img = Image.open(file_buffer)
-        # Process: img_array = np.array(img.resize((224, 224)))
-        # prediction = vision_model.predict(img_array)
-        return np.random.uniform(0.6, 0.98), "Smoke Detected"
-    else:
-        # For video, you'd typically sample frames using cv2
-        return np.random.uniform(0.5, 0.85), "Active Fire Front"
+        img_array = np.array(img)
+        
+        # Runing the actual YOLO model prediction
+        results = vision_model.predict(source=img_array,imgsz=800, conf=0.25, augment=True)
+        
+        #creating image with boxes and labels
+        annotated_img = results[0].plot()
+        annotated_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+
+        # Check if anything was detected
+        if len(results[0].boxes) > 0:
+            # Extract the top detected class and its confidence score
+            conf = float(results[0].boxes[0].conf[0])
+            cls_id = int(results[0].boxes[0].cls[0])
+            label = results[0].names[cls_id]
+            return conf, label, annotated_rgb
+        else:
+            return 0.0, "No detection", annotated_rgb
+    return 0.0, "Video mode not configured", None
 
 import numpy as np
 
@@ -455,9 +471,14 @@ try:
                 st.image(img_file, use_container_width=True)
                 if st.button("Run Vision Model (Img)", use_container_width=True):
                     with st.spinner("Analyzing pixels..."):
-                        score, label = run_vision_inference(img_file, is_video=False)
-                        st.metric("Confidence", f"{score:.1%}")
-                        st.write(f"**Result:** {label}")
+                        score, label, result_img = run_vision_inference(img_file, is_video=False)
+                        # Display the image WITH bounding boxes
+                        st.image(result_img, caption=f"Detection Result: {label}", use_container_width=True)
+                        if score > 0:
+                            st.metric("Primary Confidence", f"{score:.1%}")
+                            st.success(f"Detected: {label}")
+                        else:
+                            st.warning("No threats detected above threshold.")
 
         with col_vid:
             st.subheader("📽️ Video Input")
