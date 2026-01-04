@@ -1,26 +1,46 @@
 #dependency error to be resolved
 # Define the custom objects mapping
-custom_dict = {
-    'preprocess_input': preprocess_input
-}
 
 import streamlit as st
 import pandas as pd
 import numpy as np
+import torch
+import librosa
 import pydeck as pdk
 from datetime import datetime, timedelta
 import tensorflow as tf
 import io
+from torchvision import transforms
 from PIL import Image, ImageDraw # Added ImageDraw to simulate bounding boxes
 from audio_to_img import for_single_audio
-from tensorflow.keras.applications.efficientnet import preprocess_input
+from keras.applications import EfficientNetB0
+from keras.applications.efficientnet import preprocess_input
+
+custom_dict = {
+    'preprocess_input': preprocess_input
+}
+
 
 # --- MODEL LOADING (Placeholders) ---
 @st.cache_resource
 def load_vision_model():
-    # model = torch.load('vision_model.pth') or tf.keras.models.load_model('model.h5')
-    return "Vision Model Loaded"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    model_path = './models/best.pt'
+
+    from ultralytics.nn.tasks import DetectionModel
+    torch.serialization.add_safe_globals([DetectionModel])
+
+    try:
+        # OPTION A: If you saved the ENTIRE model:
+        model = torch.load(model_path, map_location=device, weights_only=False)
+        
+        model.eval() # Set to evaluation mode for inference
+        return model
+    except Exception as e:
+        st.error(f"Error loading PyTorch model: {e}")
+        return None
+    
 @st.cache_resource
 def load_audio_model():
     audio_model1 = tf.keras.models.load_model('./models/audio_forest.keras', custom_objects=custom_dict)
@@ -35,28 +55,43 @@ audio_model1, audio_model2 = load_audio_model()
 # --- HELPER FUNCTIONS FOR INFERENCE ---
 def run_vision_inference(file_buffer, is_video=False):
     """
-    Passes image to the Vision Model.
-    The model returns the processed image (with boxes) and metadata.
+    Passes image to the YOLO-style Vision Model.
+    Uses .plot() to return the image with bounding boxes.
     """
     if not is_video:
-        # 1. Convert upload to the format your model expects (e.g., NumPy)
+        # 1. Load the image from the Streamlit buffer
         raw_img = Image.open(file_buffer).convert("RGB")
-        img_array = np.array(raw_img)
         
-        # 2. CALL YOUR MODEL HERE
-        # inferred_img_array, score, label = your_model.predict(img_array)
+        # 2. RUN INFERENCE
+        # Most YOLO-style models can take a PIL image or NumPy array directly
+        results = vision_model(raw_img) # Returns a list of Results objects
         
-        # SIMULATION: Mocking the model returning an image with boxes
-        inferred_img_array = img_array.copy() 
-        # (Your model would have actually drawn the boxes on this array)
+        # 3. EXTRACT DATA FROM THE FIRST RESULT
+        result = results[0]
+        
+        # Get the pre-drawn image (NumPy array in BGR or RGB)
+        # result.plot() returns an image with boxes and labels already drawn
+        inferred_img_array = result.plot() 
+        
+        # Convert BGR to RGB if necessary (YOLO often plots in BGR)
+        # inferred_img_array = inferred_img_array[:, :, ::-1]
 
-        label = "Wildfire/Smoke Detected"
+        # 4. GET METADATA
+        if len(result.boxes) > 0:
+            # Get the highest confidence score
+            score = float(result.boxes.conf.max())
+            # Get the class name of the top detection
+            class_id = int(result.boxes.cls[0])
+            label = result.names[class_id] # Assuming result.names exists
+        else:
+            score = 0.0
+            label = "No Detections"
         
         return score, label, inferred_img_array
+    
     else:
-        return np.random.uniform(0.5, 0.85), "Video Analysis Result", None
-
-import numpy as np
+        # For video, you would loop through frames and apply the same logic
+        return 0.0, "Video processing not implemented", None
 
 def run_audio_inference(file_buffer):
     
@@ -447,23 +482,37 @@ try:
             st.subheader("🖼️ Image Input")
             img_file = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'], key="img_test")
             if img_file:
-                st.image(img_file, use_container_width=True)
+                # Show the original image initially
+                st.image(img_file, caption="Original Upload", use_container_width=True)
+                
                 if st.button("Run Vision Model (Img)", use_container_width=True):
                     with st.spinner("Analyzing pixels..."):
-                        score, label = run_vision_inference(img_file, is_video=False)
+                        # Updated to receive 3 values: score, label, and the plotted image array
+                        score, label, inferred_img = run_vision_inference(img_file, is_video=False)
+                        
+                        st.divider()
                         st.metric("Confidence", f"{score:.1%}")
                         st.write(f"**Result:** {label}")
+                        
+                        # Display the image with bounding boxes returned by the model
+                        # Note: If colors look blue/weird, use: inferred_img[:, :, ::-1]
+                        st.image(inferred_img, caption="AI Detection Output", use_container_width=True)
 
         with col_vid:
-            st.subheader("📽️ Video Input")
-            vid_file = st.file_uploader("Upload Video", type=['mp4', 'mov'], key="vid_test")
-            if vid_file:
-                st.video(vid_file)
-                if st.button("Run Vision Model (Vid)", use_container_width=True):
-                    with st.spinner("Scanning frames..."):
-                        score, label = run_vision_inference(vid_file, is_video=True)
-                        st.metric("Confidence", f"{score:.1%}")
-                        st.write(f"**Result:** {label}")
+                st.subheader("📽️ Video Input")
+                vid_file = st.file_uploader("Upload Video", type=['mp4', 'mov'], key="vid_test")
+                if vid_file:
+                    st.video(vid_file)
+                    if st.button("Run Vision Model (Vid)", use_container_width=True):
+                        with st.spinner("Scanning frames..."):
+                            # For video, if you return a specific frame with boxes, display it here
+                            score, label, inferred_frame = run_vision_inference(vid_file, is_video=True)
+                            
+                            st.metric("Confidence", f"{score:.1%}")
+                            st.write(f"**Result:** {label}")
+                            
+                            if inferred_frame is not None:
+                                st.image(inferred_frame, caption="Analyzed Video Frame", use_container_width=True)
 
         with col_aud:
             st.subheader("🔊 Audio Input")
