@@ -1,12 +1,8 @@
-from tensorflow.keras.applications.efficientnet import preprocess_input
-import keras
-
 #dependency error to be resolved
 # Define the custom objects mapping
 custom_dict = {
     'preprocess_input': preprocess_input
 }
-
 
 import streamlit as st
 import pandas as pd
@@ -14,13 +10,10 @@ import numpy as np
 import pydeck as pdk
 from datetime import datetime, timedelta
 import tensorflow as tf
-# import torch
 import io
-from PIL import Image
-#import librosa
-#import cv2
-
+from PIL import Image, ImageDraw # Added ImageDraw to simulate bounding boxes
 from audio_to_img import for_single_audio
+from tensorflow.keras.applications.efficientnet import preprocess_input
 
 # --- MODEL LOADING (Placeholders) ---
 @st.cache_resource
@@ -41,15 +34,27 @@ audio_model1, audio_model2 = load_audio_model()
 
 # --- HELPER FUNCTIONS FOR INFERENCE ---
 def run_vision_inference(file_buffer, is_video=False):
-    """Passes image or video to the Vision Model"""
+    """
+    Passes image to the Vision Model.
+    The model returns the processed image (with boxes) and metadata.
+    """
     if not is_video:
-        img = Image.open(file_buffer)
-        # Process: img_array = np.array(img.resize((224, 224)))
-        # prediction = vision_model.predict(img_array)
-        return np.random.uniform(0.6, 0.98), "Smoke Detected"
+        # 1. Convert upload to the format your model expects (e.g., NumPy)
+        raw_img = Image.open(file_buffer).convert("RGB")
+        img_array = np.array(raw_img)
+        
+        # 2. CALL YOUR MODEL HERE
+        # inferred_img_array, score, label = your_model.predict(img_array)
+        
+        # SIMULATION: Mocking the model returning an image with boxes
+        inferred_img_array = img_array.copy() 
+        # (Your model would have actually drawn the boxes on this array)
+
+        label = "Wildfire/Smoke Detected"
+        
+        return score, label, inferred_img_array
     else:
-        # For video, you'd typically sample frames using cv2
-        return np.random.uniform(0.5, 0.85), "Active Fire Front"
+        return np.random.uniform(0.5, 0.85), "Video Analysis Result", None
 
 import numpy as np
 
