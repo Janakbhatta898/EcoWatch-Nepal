@@ -49,7 +49,7 @@ Aadim Sapkota
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/KarnaPratik/Wildfire-Detection-System
+git clone https://github.com/KarnaPratik/Forest-Conservation-System
 
 ```
 
@@ -271,4 +271,5 @@ pip install pydeck
 # Check if PyDeck is working
 
 python -c "import pyde
+
 
