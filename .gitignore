@@ -54,3 +54,7 @@ pip-delete-this-directory.txt
 # --- OS Specific ---
 .DS_Store
 Thumbs.db
+
+.\environment_older_version
+.\environment_for_hackaweek
+
