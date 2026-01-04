@@ -75,8 +75,8 @@ def run_audio_inference(file_buffer):
 
 # Page config - MUST BE FIRST
 st.set_page_config(
-    page_title="ForestGuard - Wildfire Detection",
-    page_icon="🔥",
+    page_title="VanaRakshya",
+    page_icon="🌳🌳",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -171,7 +171,7 @@ def get_severity(brightness):
 
 # Sidebar
 with st.sidebar:
-    st.markdown("# 🌲 ForestGuard")
+    st.markdown("# 🌲 VanaRakshya")
     st.markdown("---")
     st.markdown("### 🛰️ Data Source")
     st.info("NASA FIRMS (VIIRS)\nNear Real-Time Detection")
@@ -206,7 +206,7 @@ try:
         df_filtered = df_filtered[df_filtered['region'].str.contains('|'.join(selected_regions), case=False, na=False)]
     
     # Main header
-    st.markdown('<div class="main-header">🔥 ForestGuard Wildfire Detection System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🤖VanaRakshya</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Real-time monitoring powered by NASA satellite data</div>', unsafe_allow_html=True)
     
     # Key metrics
