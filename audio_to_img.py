@@ -60,6 +60,15 @@ def audio_to_image(file=None, max_size=1000, y=None, sr=22050):
 
 def for_single_audio(file):
     img, y, sr = audio_to_image(file)
+    
+    # img should be (128, 1000, 3) after audio_to_image
+    # Add batch dimension -> (1, 128, 1000, 3)
     img_ready = np.expand_dims(img, axis=0)
+    
+    # Normalize to [0, 1]
     img_ready = img_ready / 255.0
+    
+    # Verify shape
+    assert img_ready.shape == (1, 128, 1000, 3), f"Wrong shape: {img_ready.shape}"
+    
     return img_ready, y, sr

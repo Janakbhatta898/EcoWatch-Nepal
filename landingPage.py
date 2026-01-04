@@ -30,9 +30,9 @@ def load_vision_model():
 
 @st.cache_resource
 def load_audio_model():
-    audio_model1 = tf.keras.models.load_model('./models/audio_forest.keras', custom_objects=custom_dict)
-    audio_model2 = tf.keras.models.load_model('./models/audio_multi_classification.keras', custom_objects=custom_dict)
-    return (audio_model1, audio_model2)
+    audio_model1 = tf.keras.models.load_model('./models/audio_forest_3.keras', custom_objects=custom_dict)
+    # audio_model2 = tf.keras.models.load_model('./models/audio_multi_classification.keras', custom_objects=custom_dict)
+    return (audio_model1, "audio_model2")
 
 
 
@@ -54,28 +54,26 @@ def run_vision_inference(file_buffer, is_video=False):
 import numpy as np
 
 def run_audio_inference(file_buffer):
-    
-    # Preprocess the audio
+    # Get the preprocessed image from your audio_to_img function
     img_ready, y_raw, sr = for_single_audio(file_buffer)
-    img_ready = np.expand_dims(img_ready, axis=0)  
-
-    # Level 1: Binary detection (e.g., Is there an anomaly?)
+    
+    # img_ready is already (1, 128, 1000, 3) and normalized [0, 1]
+    # Your model has a Resizing layer that will handle 128x1000 -> 224x224
+    
+    # Level 1: Binary detection
     y_pred1 = audio_model1.predict(img_ready)
     confidence = float(y_pred1[0][0])
     label = "natural"
 
     # Level 2: Specific classification if Level 1 threshold is met
     if confidence > 0.5:
-        y_pred2 = audio_model2.predict(img_ready)
-        
-        # Assuming audio_model2 returns a softmax array of classes
-        # e.g., [0.1, 0.8, 0.1] -> Class 1 (Chainsaw)
-        classes = ["fire", "Logging", "Poaching"]
-        class_idx = np.argmax(y_pred2[0])
-        label = classes[class_idx]
-        
-        # Update confidence to the specific class confidence
-        confidence = float(y_pred2[0][class_idx])
+        # Uncomment when you have the second model
+        # y_pred2 = audio_model2.predict(img_ready)
+        # classes = ["fire", "Logging", "Poaching"]
+        # class_idx = np.argmax(y_pred2[0])
+        # label = classes[class_idx]
+        # confidence = float(y_pred2[0][class_idx])
+        label = "forest_threat_detected"
 
     return confidence, label
 
