@@ -41,6 +41,7 @@ def set_camera(): #this function will be used to get the ip address after the us
             cap.release()
         cap=cv2.VideoCapture(real_ip)
 
+        threading.Thread(target=get_audio_inference, daemon=True).start()
     return jsonify({"status":"Connected!","ip":real_ip})
 
 def get_audio_inference():
