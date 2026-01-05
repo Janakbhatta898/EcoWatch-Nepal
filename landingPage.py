@@ -106,7 +106,7 @@ def run_vision_inference(file_buffer, is_video=False):
         img_array = np.array(img)
         
         # Runing the actual YOLO model prediction
-        results = vision_model.predict(source=img_array,imgsz=800, rect=False, conf=0.25, augment=True)
+        results = vision_model.predict(source=img_array,imgsz=800, rect=False, conf=0.35, augment=True)
         
         #creating image with boxes and labels
         annotated_img = results[0].plot()
@@ -121,7 +121,57 @@ def run_vision_inference(file_buffer, is_video=False):
             return conf, label, annotated_rgb
         else:
             return 0.0, "No detection", annotated_rgb
-    return 0.0, "Video mode not configured", None
+    else:
+        #videoAADlogic
+        #a physical file is needed for OpenCV to read it, so buffer is saved temporarily
+        import tempfile
+        import os 
+        import gc # garbage collector to force-release file locks
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile:
+            tfile.write(file_buffer.read()) #data goes to buffer
+            tfile.close() #data is pushed to disk and thus, lock is released
+            temp_path = tfile.name #grabbing the name so we can find it later
+        
+        try:
+            st_frame = st.empty() #st_frame is for updating frames in real time
+            highest_conf = 0.0
+            top_label = "Scanning..."
+
+            #using stream=True for processing frame-by-frame without CRASHING THE F OUTTA MEMORY
+            results = vision_model.predict(source=temp_path, stream=True, conf=0.25)
+
+            for result in results: 
+                #frame is converted to RGB for display in Streamlit
+                frame = result.plot()
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                #updating the ui placeholder with current PROCESSED FRAME
+                st_frame.image(frame_rgb, channels="RGB", use_container_width=True)
+
+                #most confidence detection found in the whole video is tracked
+                if len(result.boxes)>0:
+                    current_conf = float(result.boxes[0].conf[0])
+                    if current_conf > highest_conf:
+                        highest_conf = current_conf
+                        top_cls_id = int(result.boxes[0].cls[0])
+                        top_label = result.names[top_cls_id]
+            
+            #explicitly deleting the generator and forcing garbage collection
+            #releasing the lock YOLO has on the .mp4 file
+            del results
+            gc.collect()
+
+
+            return highest_conf, top_label, None
+        finally:
+            #cleaning up: manually deleting the temp file after processing
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception as e:
+                    print(f"Cleanup error: {e}")
+
 
 def run_audio_inference(file_buffer):
     class_names = ['natural sound', 'unnatural']
@@ -580,11 +630,13 @@ try:
                 st.video(vid_file)
                 if st.button("Run Vision Model (Vid)", use_container_width=True):
                     with st.spinner("Scanning frames..."):
+                        #triggering the 'is_video' block in run_vision_inference above
                         score, label, _ = run_vision_inference(vid_file, is_video=True)
-                        st.metric("Confidence", f"{score:.1%}")
+                        #showing final best result after loop is done
+                        st.metric("Top Confidence", f"{score:.1%}")
                         if score > 0.5:
                             log_detection("Vision AI (Vid)", label, score, 27.58, 84.30, "Western Buffer Zone")
-                            st.success("Video event logged!")
+                            st.success(f"Detected {label}! Video event logged to database.!")
 
         with col_aud:
             st.subheader("🔊 Audio Input")
