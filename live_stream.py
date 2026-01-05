@@ -4,6 +4,8 @@ import cv2
 import time
 import io
 from inference_engine import run_vision_inference,run_audio_inference
+import requests
+
 
 cap=None
 video_url=None
@@ -28,13 +30,13 @@ def set_camera(): #this function will be used to get the ip address after the us
 
     #this will receive json data which we will use to recieve the ip address
     data=request.json
-    ip=data.get("ip")
+    video_url=data.get("ip")
 
 
     if not ip:
         return jsonify({"error":"No Ip address has been sent!"})
     
-    real_ip=f"http://{ip}/video"
+    real_ip=f"http://{video_url}/video"
 
     with lock:
         if not cap is None:
@@ -52,7 +54,7 @@ def get_audio_inference():
 
     while True:
         try:
-            with request.get(audio_url,stream=True,timeout=5) as r:
+            with requests.get(audio_url,stream=True,timeout=5) as r:
                 audio_buffer=io.BytesIO()
                 first_time=time.time()
 
@@ -85,7 +87,7 @@ def generate_frame():
     """
     this will generate all the videos and run inference from the model 
     """
-    global cap,conf,label
+    global cap,conf,label,video_url
     
 
 
