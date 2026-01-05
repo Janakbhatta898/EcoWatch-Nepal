@@ -1,6 +1,9 @@
 from flask import Flask, Response, request, jsonify
 import threading
 import cv2
+import time
+import io
+from inference_engine import run_vision_inference,run_audio_inference
 
 cap=None
 video_url=None
@@ -42,7 +45,7 @@ def generate_frame():
     this will generate all the videos and run inference from the model 
     """
     global cap
-    from inference_engine import run_vision_inference
+    
 
 
     #run the loop infinitely
