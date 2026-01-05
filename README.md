@@ -1,5 +1,5 @@
 ﻿# 🔥 VanaRakshya - AI-Powered Forest Conservation System
-An intelligent web application for forest rangers and officials to detect and monitor wildfires, illegal logging and poaching in real-time using NASA satellite data, drone imagery, and machine learning.
+An intelligent web application for forest rangers and officials to detect and monitor wildfires, illegal logging and poaching in real-time using real time drone imagery, gopros, cctvs used in forests/national parks that are connected to wlan and machine learning.
 
 ---
 
@@ -271,6 +271,7 @@ pip install pydeck
 # Check if PyDeck is working
 
 python -c "import pyde
+
 
 
 
