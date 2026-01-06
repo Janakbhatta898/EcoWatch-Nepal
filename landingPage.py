@@ -3,6 +3,7 @@ import keras
 from ultralytics import YOLO
 import os
 #dependency error to be resolved
+#Fixed balloons
 # Define the custom objects mapping
 custom_dict = {
     'preprocess_input': preprocess_input
