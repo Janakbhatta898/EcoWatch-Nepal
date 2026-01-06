@@ -17,6 +17,8 @@ import tensorflow as tf
 import torch
 import io
 from PIL import Image
+import tempfile  # Added this
+import gc        # Added this
 #import librosa
 import cv2
 import sqlite3
@@ -80,12 +82,14 @@ def reset_database():
 
 # --- MODEL LOADING ---
 @st.cache_resource
-def load_vision_model():
+def load_vision_models():
     base_path = os.path.dirname(os.path.abspath(__file__))
 
-    model_path = os.path.join(base_path, 'models', 'best.pt')
-    model = YOLO(model_path)
-    return model
+    model_path_1 = os.path.join(base_path, 'models', 'best_v1.pt')
+    model_path_2 = os.path.join(base_path, 'models', 'best_v2.pt')
+    model1 = YOLO(model_path_1)
+    model2 = YOLO(model_path_2)
+    return model1, model2
 
 @st.cache_resource
 def load_audio_model():
@@ -95,45 +99,60 @@ def load_audio_model():
 
 
 
-vision_model = load_vision_model()
+vision_model1, vision_model2 = load_vision_models()
 audio_model1, audio_model2 = load_audio_model()
 
 # --- HELPER FUNCTIONS FOR INFERENCE ---
-
 def run_vision_inference(file_buffer=None, is_video=False, FRAME_ARRAY=None):
-    # --- 1. LIVE FRAME LOGIC (Direct from OpenCV) ---
-    if FRAME_ARRAY is not None:
-        results = vision_model.predict(source=FRAME_ARRAY, imgsz=640, conf=0.35, verbose=False)
-        annotated_img = results[0].plot()
-        annotated_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+    # Helper to check agreement between two result objects
+    def get_consensus(res1, res2):
+        # res1 is usually a list from .predict(), res2 is a result object
+        det1 = len(res1[0].boxes) > 0
+        det2 = len(res2.boxes) > 0
+        
+        # Get max confidence if available
+        conf1 = float(res1[0].boxes[0].conf[0]) if det1 else 0.0
+        conf2 = float(res2.boxes[0].conf[0]) if det2 else 0.0
+        max_conf = max(conf1, conf2)
 
-        if len(results[0].boxes) > 0:
-            conf = float(results[0].boxes[0].conf[0])
-            label = results[0].names[int(results[0].boxes[0].cls[0])]
-            return conf, label, annotated_rgb
-        return 0.0, "No detection", annotated_rgb
+        # CASE 1: BOTH MODELS AGREE
+        if det1 and det2:
+            return max_conf, "fire"
+        
+        # CASE 2: ONLY ONE MODEL DETECTS
+        elif det1 or det2:
+            if max_conf > 0.50:
+                return max_conf, "fire"
+            return max_conf, "Unconfirmed fire"
+        
+        return 0.0, "No detection"
+
+    # --- 1. LIVE FRAME LOGIC ---
+    if FRAME_ARRAY is not None:
+        results1 = vision_model1.predict(source=FRAME_ARRAY, imgsz=640, conf=0.35, verbose=False)
+        results2 = vision_model2.predict(source=FRAME_ARRAY, imgsz=640, conf=0.35, verbose=False)
+        
+        conf, label = get_consensus(results1, results2[0])
+        annotated_img = results1[0].plot() 
+        annotated_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+        return conf, label, annotated_rgb
 
     # --- 2. IMAGE UPLOAD LOGIC ---
     elif not is_video and file_buffer is not None:
         img = Image.open(file_buffer)
-        img_array = np.array(img)
-        results = vision_model.predict(source=img_array, imgsz=800, conf=0.35)
-        annotated_img = results[0].plot()
-        annotated_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+        img_array = np.array(img) # Now correctly uses global np
         
-        if len(results[0].boxes) > 0:
-            conf = float(results[0].boxes[0].conf[0])
-            label = results[0].names[int(results[0].boxes[0].cls[0])]
-            return conf, label, annotated_rgb
-        return 0.0, "No detection", annotated_rgb
+        results1 = vision_model1.predict(source=img_array, imgsz=800, conf=0.25)
+        results2 = vision_model2.predict(source=img_array, imgsz=800, conf=0.25)
+        
+        # results2[0] ensures we pass the result object, not the list
+        conf, label = get_consensus(results1, results2[0])
+        annotated_img = results1[0].plot()
+        annotated_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+        return conf, label, annotated_rgb
 
-    # --- 3. VIDEO FILE LOGIC (Corrected Structure) ---
+    # --- 3. VIDEO FILE LOGIC ---
     elif is_video and file_buffer is not None:
-        import tempfile
-        import os 
-        import gc
-
-        # Create temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile:
             tfile.write(file_buffer.read())
             temp_path = tfile.name
@@ -142,28 +161,48 @@ def run_vision_inference(file_buffer=None, is_video=False, FRAME_ARRAY=None):
             st_frame = st.empty() 
             highest_conf = 0.0
             top_label = "Scanning..."
+            frame_count = 0
 
-            # stream=True prevents memory overflow on large files
-            results = vision_model.predict(source=temp_path, stream=True, conf=0.25)
-
-            for result in results: 
-                frame = result.plot()
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                st_frame.image(frame_rgb, channels="RGB", use_container_width=True)
-
-                if len(result.boxes) > 0:
-                    current_conf = float(result.boxes[0].conf[0])
-                    if current_conf > highest_conf:
-                        highest_conf = current_conf
-                        top_label = result.names[int(result.boxes[0].cls[0])]
+            stream1 = vision_model1.predict(source=temp_path, stream=True, conf=0.25)
             
-            # Releasing memory locks
-            del results
+            for res1 in stream1:
+                frame_count += 1
+                frame = res1.plot()
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Image Enhancement
+                lab = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+                cl = clahe.apply(l)
+                enhanced_frame = cv2.cvtColor(cv2.merge((cl,a,b)), cv2.COLOR_LAB2RGB)
+                st_frame.image(enhanced_frame, channels="RGB", use_container_width=True)
+
+                if len(res1.boxes) > 0:
+                    res2_list = vision_model2.predict(source=enhanced_frame, conf=0.25, verbose=False)
+                    if res2_list and len(res2_list[0].boxes) > 0: 
+                        conf, label = get_consensus([res1], res2_list[0])
+                        if conf > highest_conf:
+                            highest_conf = conf
+                            top_label = label
+                
+                elif frame_count % 10 == 0:
+                    h, w, _ = enhanced_frame.shape
+                    y1, y2 = int(h * 0.25), int(h * 0.75)
+                    x1, x2 = int(w * 0.25), int(w * 0.75)
+                    zoom_frame = enhanced_frame[y1:y2, x1:x2]
+
+                    res2_list = vision_model2.predict(source=zoom_frame, conf=0.25, verbose=False)
+                    if res2_list and len(res2_list[0].boxes) > 0:
+                        current_res2_conf = res2_list[0].boxes.conf.max().item()
+                        if current_res2_conf > highest_conf:
+                            highest_conf = current_res2_conf
+                            top_label = "Fire (Low-light environment)"
+            
             gc.collect()
             return highest_conf, top_label, None
 
         finally:
-            # THIS IS THE CLEANUP YOU NEEDED
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
@@ -171,7 +210,6 @@ def run_vision_inference(file_buffer=None, is_video=False, FRAME_ARRAY=None):
                     print(f"Cleanup error: {e}")
     
     return 0.0, "Invalid Input", None
-
 
 def run_audio_inference(file_buffer):
     class_names = ['natural sound', 'unnatural']
@@ -608,7 +646,7 @@ try:
                         score, label, result_img = run_vision_inference(img_file, is_video=False)
                         st.image(result_img, caption=f"Detection Result: {label}", use_container_width=True)
                         
-                        if score > 0.4: # Only log if it's a confident detection
+                        if score > 0.40: # Only log if it's a confident detection
                             # 📍 Log to Database
                             log_detection(
                                 source="Vision AI", 
@@ -618,10 +656,14 @@ try:
                                 lon=84.45, 
                                 region="Chitwan Sector A"
                             )
-                            st.success(f"🚨 {label} logged to map!")
-                            st.balloons()
+                            if label == "fire":
+                                #triggered because both agreed OR one was moderately confident
+                                st.success(f"🚨 Fire confirmed and logged to map! (Confidence: {score:.2f})")
+                            elif label == "Unconfirmed fire":
+                                #triggered because only one saw it with moderate confidence
+                                st.warning(f"⚠️ Unconfirmed fire detected by single model. (Confidence: {score:.2f})")
                         else:
-                            st.warning("No threats detected above threshold.")
+                            st.info("No threats detected above threshold.")
 
         with col_vid:
             st.subheader("📽️ Video Input")
