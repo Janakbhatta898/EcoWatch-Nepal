@@ -5,20 +5,27 @@ import time
 import io
 from inference_engine import run_vision_inference,run_audio_inference
 import requests
-
+import traceback
 
 cap=None
 video_url=None
 lock=threading.Lock() #to stop any livestreams simultaneously
-audio_prediction="0"
+audio_prediction=0
 audio_label="Analysing sound..."
 conf=0
 label="Analysing Video"
-combined_pred=0
+combined_prediction=0
 combined_label="Analysing"
+
+audio_model1_class_names = ['natural sound', 'unnatural']
+audio_model2_class_names=['fire', 'logging', 'poaching']
+video_model_class_names=["Fire","Natural"]
 
 app=Flask(__name__)
 
+
+_audio_thread= None
+_audio_thread_stop=False
 @app.route("/")
 def home():
     return "Running!"
@@ -26,7 +33,7 @@ def home():
 @app.route("/setting_camera",methods=["POST"])
 def set_camera(): #this function will be used to get the ip address after the user pushes it
     #we gonna use the global cap variable that will check if we are already reading videos from one endpoint
-    global cap, video_url
+    global cap, video_url,_audio_thread,_audio_thread_stop
 
     #this will receive json data which we will use to recieve the ip address
     data=request.json
@@ -43,38 +50,73 @@ def set_camera(): #this function will be used to get the ip address after the us
             cap.release()
         cap=cv2.VideoCapture(real_ip)
 
-        threading.Thread(target=get_audio_inference, daemon=True).start()
+    if _audio_thread is None or not _audio_thread.is_alive():
+        _audio_thread_stop=False
+        _audio_thread=threading.Thread(target=get_audio_inference,daemon=True)
+        _audio_thread.start()
+
     return jsonify({"status":"Connected!","ip":real_ip})
 
 def get_audio_inference():
-    global audio_prediction, audio_label,video_url
+    global audio_prediction, audio_label,video_url,_audio_thread_stop
 
 
-    audio_url=f"http://{video_url}/audio.wav"
+    
 
     while True:
+        if _audio_thread_stop:
+            break
+
+        if not video_url:
+            time.sleep(1.0)
+            continue
+        audio_url=f"http://{video_url}/audio.wav"
         try:
             with requests.get(audio_url,stream=True,timeout=5) as r:
+                if r.status_code!=200:
+                    time.sleep(2.0)
+                    continue
                 audio_buffer=io.BytesIO()
                 first_time=time.time()
 
                 for chunk in r.iter_content(chunk_size=1024):
+                    if not chunk:
+                        break
                     audio_buffer.write(chunk)
                     if time.time()-first_time>3:
                         break
 
                 audio_buffer.seek(0) #this makes sure when inference runs it points back to the starting
-                audio_label,audio_prediction=run_audio_inference(FRAME_ARRAY=audio_buffer)
+                try:
+                    audio_label_out,audio_prediction_out=run_audio_inference(FRAME_ARRAY=audio_buffer)
+                except Exception:
+                    traceback.print_exc()
+                    time.sleep(1.0)
+                    continue
 
                 with lock:
+                    audio_label=audio_label_out
+                    audio_prediction=audio_prediction_out
                     update_threat_logic()
         except:
             print("Audio_error")
             time.sleep(2)
 
 def update_threat_logic():
-    global audio_prediction, audio_label, label,conf,combined_pred,combined_label
+    global audio_prediction, audio_label, label,conf,combined_prediction,combined_label
+    if audio_label==audio_model1_class_names[0] and label=="Natural":
+        combined_label=f"Natural"
+    elif audio_label in audio_model2_class_names and label=="Natural":
+        combined_label=f"Sounds and seems Suspicious: {audio_label}"
+    elif audio_label in audio_model2_class_names and label!="Natural":
+        combined_label=f"Sounds Suspicious but cannot see anything suspicious: {audio_label}"
+    elif audio_label==audio_model1_class_names[0] and label!="Natural":
+        combined_label=f"Seems suspicious but doesn't sound suspicious: {label}"
+    else:
+        combined_label=f"Could be:{audio_label} or {label}"
+    combined_prediction=(2*audio_prediction*conf)/(audio_prediction+conf+1e-20)
 
+    
 
 
 
@@ -102,10 +144,12 @@ def generate_frame():
             if not success:
                 continue #continues if it cannot extract a frame
 
-            conf,label,annotated=run_vision_inference(FRAME_ARRAY=frame)
+            conf_out,label_out,annotated=run_vision_inference(FRAME_ARRAY=frame)
+            if conf_out<=0.4:
+                label_out="Natural"
             cv2.putText(
-            frame,
-            f"{label},{conf:.2f}",
+            annotated,
+            f"{label_out},{conf_out:.2f}",
             (20, 40),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -115,8 +159,17 @@ def generate_frame():
             
 
             #now after getting the image we convert the frames back into the videos or the MPEG format
+            
+            
+
+            conf=conf_out
+            label=label_out
+            update_threat_logic()
             ret,buffer=cv2.imencode(".jpg",annotated)
+            if not ret:
+                continue
             frame_bytes=buffer.tobytes()
+
 
             #now we yield or produce those frames in the browser till it is connected
             #yield function acts as a generator and keeps on sending images everytime
@@ -139,14 +192,12 @@ def give_video():
 
 @app.route("/combined_pred",methods=["GET"])
 def combined_pred():
-    global combined_label,combined_pred
+    global combined_label,combined_prediction
     return jsonify({
-        "Combined_prediction":combined_pred,
+        "Combined_prediction":combined_prediction,
         "Combined_label": combined_label
     })
 
 if __name__=="__main__":
     app.run(host="0.0.0.0",port=1234,threaded=True)
-
-
 

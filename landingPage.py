@@ -688,11 +688,122 @@ try:
 
         # Video Feed Display
         st.divider()
+        
         # Flask serves the MJPEG stream at this URL
         flask_url = "http://localhost:1234/video_feed"
         
-        # st.image handles the MJPEG stream automatically
+        # SHOW VIDEO FIRST
         st.image(flask_url, caption="Real-time Detection Feed", use_container_width=True)
+        
+        # THEN SHOW THE THREAT STATUS BELOW THE VIDEO
+        st.divider()
+        st.subheader("🎯 Threat Status")
+
+        # Initialize session state for caching
+        if "last_combined_label" not in st.session_state:
+            st.session_state.last_combined_label = None
+        
+        status_placeholder = st.empty()
+        
+        @st.fragment(run_every=2)  # Update every 2 seconds
+        def combined_status_fragment():
+            try:
+                # Fetch combined prediction from Flask
+                res = requests.get("http://localhost:1234/combined_pred", timeout=1).json()
+                combined_label = res.get("Combined_label", "Analysing...")
+                
+                # Initialize cache if first run
+                if st.session_state.last_combined_label is None:
+                    st.session_state.last_combined_label = combined_label
+                
+                # Only update if values changed
+                if combined_label == st.session_state.last_combined_label:
+                    return
+                
+                # Update cache
+                st.session_state.last_combined_label = combined_label
+                
+                # Convert label to short, actionable message
+                if combined_label == "Natural":
+                    color = "#22c55e"  # Green
+                    icon = "✅"
+                    message = "All Clear"
+                elif "fire" in combined_label.lower():
+                    color = "#ef4444"  # Red
+                    icon = "🔥"
+                    message = "FIRE DETECTED"
+                elif "logging" in combined_label.lower():
+                    color = "#ef4444"  # Red
+                    icon = "🪓"
+                    message = "ILLEGAL LOGGING"
+                elif "poaching" in combined_label.lower():
+                    color = "#ef4444"  # Red
+                    icon = "🎯"
+                    message = "POACHING ACTIVITY"
+                elif "Sounds and seems Suspicious" in combined_label:
+                    color = "#dc2626"  # Dark Red
+                    icon = "🚨"
+                    # Extract the specific threat from the label
+                    if "fire" in combined_label.lower():
+                        message = "FIRE ALERT"
+                    elif "logging" in combined_label.lower():
+                        message = "LOGGING DETECTED"
+                    elif "poaching" in combined_label.lower():
+                        message = "POACHING DETECTED"
+                    else:
+                        message = "THREAT DETECTED"
+                elif "Sounds Suspicious but cannot see" in combined_label:
+                    color = "#f59e0b"  # Orange
+                    icon = "👂"
+                    # Extract audio threat
+                    if "fire" in combined_label.lower():
+                        message = "Fire Sounds Detected"
+                    elif "logging" in combined_label.lower():
+                        message = "Logging Sounds Detected"
+                    elif "poaching" in combined_label.lower():
+                        message = "Poaching Sounds Detected"
+                    else:
+                        message = "Suspicious Sounds"
+                elif "Seems suspicious but doesn't sound" in combined_label:
+                    color = "#f59e0b"  # Orange
+                    icon = "👁️"
+                    message = "Visual Anomaly Detected"
+                elif "Analysing" in combined_label:
+                    color = "#6b7280"  # Gray
+                    icon = "🔍"
+                    message = "Analyzing Stream..."
+                else:
+                    color = "#f59e0b"  # Orange
+                    icon = "⚠️"
+                    message = "Unknown Threat"
+                
+                # Display status card - SIMPLE AND BOLD
+                status_placeholder.markdown(f"""
+                    <div style="
+                        padding:30px;
+                        border-radius:16px;
+                        background-color:{color};
+                        color:white;
+                        text-align:center;
+                        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+                        transition: all 0.3s ease;
+                    ">
+                        <div style="font-size:4rem; margin-bottom:15px;">{icon}</div>
+                        <h2 style="margin:0; font-size:2rem; font-weight:700; letter-spacing:1px;">
+                            {message}
+                        </h2>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+            except Exception as e:
+                status_placeholder.warning(f"⏳ Waiting for threat assessment...")
+        
+        # Render the fragment
+        combined_status_fragment()
+
+        st.markdown("---")
+        st.info("💡 **Note:** Connect your camera to start real-time forest monitoring with AI-powered threat detection.")
+
     
         st.markdown("---")
         st.info("💡 **Note:** The `type` parameter in the uploader strictly prevents users from uploading incorrect formats (e.g., an MP3 will not be accepted in the Image section).")
