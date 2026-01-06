@@ -7,7 +7,7 @@ import os
 custom_dict = {
     'preprocess_input': preprocess_input
 }
-
+import time
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -463,7 +463,7 @@ try:
 
     
     # Tabs
-    tab1, tab2, tab3, tab4,tab5 = st.tabs(["🗺️ Live Map", "⚠️ Active Alerts", "📊 Timeline Analytics", "🔬 Model Testing","🛰️ Live Monitoring"])
+    tab1, tab2, tab3, tab4,tab5,tab6 = st.tabs(["🗺️ Live Map", "⚠️ Active Alerts", "📊 Timeline Analytics", "🔬 Model Testing","🛰️ Live Monitoring","🔉 Streaming Audio Sensors"])
     
     with tab1:
         st.markdown("### 🌍 Global Hotspot Detection Map")
@@ -705,12 +705,12 @@ try:
         col_ip, col_port, col_btn = st.columns([3, 1, 1])
         
         with col_ip:
-            ip_addr = st.text_input("IP Address", placeholder="192.168.1.10")
+            ip_addr = st.text_input("IP Address", placeholder="192.168.1.10",key="cam_ip")
         with col_port:
-            port_num = st.text_input("Port", value="8080")
+            port_num = st.text_input("Port", value="8080",key="cam_port")
         with col_btn:
             st.write("##") # Align button with inputs
-            if st.button("Connect", use_container_width=True):
+            if st.button("Connect", use_container_width=True,key="cam_btn"):
                 full_ip = f"{ip_addr}:{port_num}"
                 try:
                     # Tell Flask to switch to this new camera IP
@@ -720,7 +720,7 @@ try:
                     else:
                         st.error("Flask rejected the IP format.")
                 except:
-                    st.error("Error: Flask server is not running on port 5000.")
+                    st.error("Error: Flask server is not running on port 1234.")
 
         # Video Feed Display
         st.divider()
@@ -732,6 +732,109 @@ try:
     
         st.markdown("---")
         st.info("💡 **Note:** The `type` parameter in the uploader strictly prevents users from uploading incorrect formats (e.g., an MP3 will not be accepted in the Image section).")
+    with tab6:
+        st.header("Monitor Audio Sensors")
+        # init state
+        if "audio_connected" not in st.session_state:
+            st.session_state.audio_connected = False
+
+        # Connection Interface
+        st.info("Enter the IP address of your audio sensor to start the AI stream.")
+        col_ip, col_port, col_btn = st.columns([3, 1, 1])
+
+        with col_ip:
+            ip_addr = st.text_input("IP Address", placeholder="192.168.1.10", key="audio_ip")
+        with col_port:
+            port_num = st.text_input("Port", value="8080", key="audio_port")
+        with col_btn:
+            st.write("##")  # align
+            if st.button("Connect", use_container_width=True, key="audio_btn"):
+                full_ip = f"{ip_addr}:{port_num}"
+                try:
+                    resp = requests.post("http://localhost:1235/setting_audio", json={"ip": full_ip}, timeout=3)
+                    if resp.status_code == 200:
+                        st.session_state.audio_connected = True
+                        st.success("Audio Sensor Link Established!")
+                    else:
+                        # show server message if available
+                        try:
+                            msg = resp.json()
+                        except:
+                            msg = {"error": f"code {resp.status_code}"}
+                        st.error(f"Flask rejected the IP format: {msg}")
+                except Exception as e:
+                    st.error(f"Error: Could not reach Flask on port 1235 ({e})")
+
+        st.divider()
+
+        # audio feed URL (used by browser player)
+        flask_url = "http://localhost:1235/audio_feed"
+        status_box = st.empty()
+        if "last_audio_label" not in st.session_state:
+            st.session_state.last_audio_label = None
+        if "last_audio_pred" not in st.session_state:
+            st.session_state.last_audio_pred = None
+
+        @st.fragment(run_every=2)
+        def audio_status_fragment():
+            if not st.session_state.get("audio_connected", False):
+                status_box.info("🔌 Connect an audio sensor to start monitoring.")
+                return
+
+            # 🔊 ALWAYS render audio player (no autoplay)
+            st.markdown(
+                f'<audio controls src="{flask_url}" style="width:100%; margin-bottom:10px;"></audio>',
+                unsafe_allow_html=True
+            )
+
+            try:
+                res = requests.get("http://localhost:1235/status", timeout=1).json()
+                label = res.get("Audio_Label", "Analysing...")
+                pred = float(res.get("Audio_Prediction", 0.0))
+
+                # initialize cache
+                if st.session_state.last_audio_label is None:
+                    st.session_state.last_audio_label = label
+                    st.session_state.last_audio_pred = pred
+
+                # Only update CARD if values changed
+                if (
+                    label == st.session_state.last_audio_label
+                    and abs(pred - st.session_state.last_audio_pred) < 0.02
+                ):
+                    return
+
+                st.session_state.last_audio_label = label
+                st.session_state.last_audio_pred = pred
+
+                color = "#ef4444" if str(label).lower() in ["fire", "logging", "poaching"] else "#22c55e"
+
+                status_box.markdown(f"""
+                    <div style="
+                        min-height:110px;
+                        padding:14px;
+                        border-radius:12px;
+                        background-color:{color};
+                        color:white;
+                        text-align:center;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.08);
+                        transition: all 0.25s ease;
+                    ">
+                        <h3 style="margin:0;">{str(label).upper()}</h3>
+                        <div style="opacity:0.9;">Confidence: {pred:.1%}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            except Exception:
+                status_box.warning("Waiting for audio sensor status...")
+
+        # render / schedule the fragment
+        audio_status_fragment()
+ 
+        
+        st.markdown("---")
+        st.info("💡 **Note:** The `type` parameter in the uploader strictly prevents users from uploading incorrect formats (e.g., an MP3 will not be accepted in the Image section).")
+    
     # comment
     # Footer
     st.markdown("---")

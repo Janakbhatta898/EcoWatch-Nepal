@@ -126,14 +126,14 @@ def run_vision_inference(file_buffer=None, is_video=False, FRAME_ARRAY=None):
 
 # --- 3. AUDIO INFERENCE ---
 
-def run_audio_inference(file_buffer):
+def run_audio_inference(file_buffer=None,FRAME_ARRAY=None):
     """
     Processes audio buffer and returns: (confidence, label)
     """
     class_names = ['natural sound', 'unnatural']
     class_names2 = ['fire', 'logging', 'poaching']
-
-    img_ready, _, _ = for_single_audio(file_buffer)
+    if not file_buffer is None:
+        img_ready, _, _ = for_single_audio(file_buffer)
     img_for_model = preprocess_input(img_ready)
 
     # Level 1: Natural vs Unnatural
@@ -152,3 +152,4 @@ def run_audio_inference(file_buffer):
         final_conf = float(y_pred2[0][class_index2])
     
     return final_conf, label
+
