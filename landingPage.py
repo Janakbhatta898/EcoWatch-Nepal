@@ -386,7 +386,7 @@ with st.sidebar:
     
     st.markdown("### 🔍 Filters")
     min_confidence = st.slider("Minimum Confidence %", 0, 100, 70)
-    
+
     st.markdown("### 🎯 Focus Regions")
     all_regions = ["All Regions", "California", "Amazon", "Australia"]
     selected_regions = st.multiselect(
@@ -394,6 +394,10 @@ with st.sidebar:
         all_regions,
         default=["All Regions"]
     )
+
+    st.markdown("### 📊 Data: Handpicked by Abhyudaya Pokhrel")
+
+    st.markdown("### ⚙️ System Architect: Mahesh Panta")
     
     st.markdown("---")
     with st.sidebar.expander("🛠️ Admin Tools"):
