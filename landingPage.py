@@ -25,6 +25,7 @@ import cv2
 import sqlite3
 import requests
 from audio_to_img import for_single_audio
+from email_utils import send_email
 
 #Database Helper Functions
 def get_db_connection():
@@ -306,6 +307,77 @@ def live_map_fragment(satellite_df):
             pickable=True
         ))
 
+    # LAYER 4: RIVER MONITORING MARKERS (Orange/Green)
+    # Check if river data exists in session state
+    if 'river_1_turbidity' in st.session_state and 'river_1_pollutants' in st.session_state:
+        river_data = []
+        
+        # River 1 coordinates (Nepal - example: Bagmati River area)
+        river1_lat = 27.7000
+        river1_lon = 85.3167
+        
+        # River 2 coordinates (Nepal - example: Narayani River area)
+        river2_lat = 27.5000
+        river2_lon = 84.4000
+        
+        # Get river values
+        r1_turb = st.session_state.get('river_1_turbidity', 0)
+        r1_poll = st.session_state.get('river_1_pollutants', 0)
+        r2_turb = st.session_state.get('river_2_turbidity', 0)
+        r2_poll = st.session_state.get('river_2_pollutants', 0)
+        
+        # Check limits: both turbidity > 5 AND pollutants > 10 must exceed
+        r1_exceeds = (r1_turb > 5) and (r1_poll > 10)
+        r2_exceeds = (r2_turb > 5) and (r2_poll > 10)
+        
+        # Add River 1 marker
+        if r1_turb > 0 or r1_poll > 0:  # Only show if data entered
+            river_data.append({
+                'latitude': river1_lat,
+                'longitude': river1_lon,
+                'river_name': 'river_1',
+                'turbidity': r1_turb,
+                'pollutants': r1_poll,
+                'exceeds_limit': r1_exceeds
+            })
+        
+        # Add River 2 marker
+        if r2_turb > 0 or r2_poll > 0:  # Only show if data entered
+            river_data.append({
+                'latitude': river2_lat,
+                'longitude': river2_lon,
+                'river_name': 'river_2',
+                'turbidity': r2_turb,
+                'pollutants': r2_poll,
+                'exceeds_limit': r2_exceeds
+            })
+        
+        if river_data:
+            river_df = pd.DataFrame(river_data)
+            # Create separate layers for orange (exceeds) and green (safe)
+            exceeds_df = river_df[river_df['exceeds_limit'] == True]
+            safe_df = river_df[river_df['exceeds_limit'] == False]
+            
+            if not exceeds_df.empty:
+                layers.append(pdk.Layer(
+                    'ScatterplotLayer',
+                    data=exceeds_df,
+                    get_position='[longitude, latitude]',
+                    get_color=[255, 165, 0, 200], # Orange for exceeds limit
+                    get_radius=8000,
+                    pickable=True
+                ))
+            
+            if not safe_df.empty:
+                layers.append(pdk.Layer(
+                    'ScatterplotLayer',
+                    data=safe_df,
+                    get_position='[longitude, latitude]',
+                    get_color=[34, 197, 94, 200], # Green for safe
+                    get_radius=8000,
+                    pickable=True
+                ))
+
     st.pydeck_chart(pdk.Deck(
         layers=layers,
         initial_view_state=pdk.ViewState(latitude=28.1, longitude=84.2, zoom=6.5, pitch=0),
@@ -378,7 +450,7 @@ def get_severity(brightness):
 
 # Sidebar
 with st.sidebar:
-    st.markdown("# 🌲 VanaRakshya")
+    st.markdown("# EcoWatch-Nepal")
     st.markdown("---")
     
     st.markdown("### 📅 Time Range")
@@ -395,9 +467,9 @@ with st.sidebar:
         default=["All Regions"]
     )
 
-    st.markdown("### 📊 Data: Handpicked by Abhyudaya Pokhrel")
+    
 
-    st.markdown("### ⚙️ System Architect: Mahesh Panta")
+    
     
     st.markdown("---")
     with st.sidebar.expander("🛠️ Admin Tools"):
@@ -421,7 +493,7 @@ try:
         df_filtered = df_filtered[df_filtered['region'].str.contains('|'.join(selected_regions), case=False, na=False)]
     
     # Main header
-    st.markdown('<div class="main-header">🤖VanaRakshya</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">EcoWatch-Nepal</div>', unsafe_allow_html=True)
     
     # Key metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -465,8 +537,9 @@ try:
 
     
     # Tabs
-    tab1, tab2, tab3, tab4,tab5,tab6 = st.tabs(["🗺️ Live Map", "⚠️ Active Alerts", "📊 Timeline Analytics", "🔬 Model Testing","🛰️ Live Monitoring","🔉 Streaming Audio Sensors"])
-    
+    tab1, tab2, tab4, tab7 = st.tabs(["🗺️ Live Map", "⚠️ Active Alerts", "🔬 Model Testing", "🌊 River Monitoring"])
+    # Hidden tabs - code remains but tabs are not shown in frontend
+    tab3, tab5, tab6 = st.tabs(["", "", ""])
     with tab1:
         st.markdown("### 🌍 Global Hotspot Detection Map")
         st.caption("Interactive map showing detected fire hotspots and active deployments.")
@@ -479,11 +552,13 @@ try:
 
         # Legend (Static, stays below the map)
         st.markdown("---")
-        l1, l2, l3, l4 = st.columns(4)
+        l1, l2, l3, l4, l5, l6 = st.columns(6)
         l1.markdown("🔴 **High Risk**")
         l2.markdown("🟡 **Medium Risk**")
         l3.markdown("🟢 **Low Risk**")
         l4.markdown("🔵 **Ranger Deployed**")
+        l5.markdown("🟠 **River Exceeds Limit**")
+        l6.markdown("🟢 **River Safe**")
         
     with tab2:
         st.markdown("### 🚨 Critical Incident Control")
@@ -627,6 +702,24 @@ try:
                             if label == "fire":
                                 #triggered because both agreed OR one was moderately confident
                                 st.success(f"🚨 Fire confirmed and logged to map! (Confidence: {score:.2f})")
+                                
+                                # Send email notification for fire detection
+                                try:
+                                    subject = "🚨 Fire Detected in Uploaded Image"
+                                    message = f"""
+Fire has been detected in an uploaded image!
+
+
+- Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+
+This is an automated alert from the EcoWatch-Nepal system.
+"""
+                                    send_email("janakbhatta898@gmail.com", subject, message)
+                                    st.info("📧 Email notification sent successfully!")
+                                except Exception as e:
+                                    st.warning(f"⚠️ Email notification failed: {str(e)}")
+                                    
                             elif label == "Unconfirmed fire":
                                 #triggered because only one saw it with moderate confidence
                                 st.warning(f"⚠️ Unconfirmed fire detected by single model. (Confidence: {score:.2f})")
@@ -931,17 +1024,124 @@ try:
         
         st.markdown("---")
     
+    with tab7:
+        st.markdown("### 🌊 River Water Quality Monitoring")
+        st.caption("Enter turbidity and pollutants data for river monitoring. Markers will appear on the Live Map.")
+        
+        # Initialize session state for river data
+        if 'river_1_turbidity' not in st.session_state:
+            st.session_state.river_1_turbidity = 0.0
+        if 'river_1_pollutants' not in st.session_state:
+            st.session_state.river_1_pollutants = 0.0
+        if 'river_2_turbidity' not in st.session_state:
+            st.session_state.river_2_turbidity = 0.0
+        if 'river_2_pollutants' not in st.session_state:
+            st.session_state.river_2_pollutants = 0.0
+        
+        st.markdown("---")
+        
+        # River 1 Input Section
+        st.markdown("#### River 1")
+        col_r1_turb, col_r1_poll = st.columns(2)
+        
+        with col_r1_turb:
+            r1_turbidity = st.number_input(
+                "Turbidity (NTU)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(st.session_state.river_1_turbidity),
+                step=0.1,
+                key="input_r1_turbidity",
+                help="Enter turbidity value. Limit: 5 NTU"
+            )
+            st.session_state.river_1_turbidity = r1_turbidity
+        
+        with col_r1_poll:
+            r1_pollutants = st.number_input(
+                "Pollutants (ppm)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(st.session_state.river_1_pollutants),
+                step=0.1,
+                key="input_r1_pollutants",
+                help="Enter pollutants value. Limit: 10 ppm"
+            )
+            st.session_state.river_1_pollutants = r1_pollutants
+        
+        # Status indicator for River 1
+        r1_exceeds = (r1_turbidity > 5) and (r1_pollutants > 10)
+        r1_status_color = "#f59e0b" if r1_exceeds else "#22c55e"
+        r1_status_text = "⚠️ Exceeds Safe Limits" if r1_exceeds else "✅ Within Safe Limits"
+        
+        st.markdown(f"""
+        <div style="padding: 10px; border-radius: 8px; background-color: {r1_status_color}; color: white; text-align: center; margin: 10px 0;">
+            <strong>River 1 Status: {r1_status_text}</strong><br>
+            Turbidity: {r1_turbidity:.1f} NTU | Pollutants: {r1_pollutants:.1f} ppm
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # River 2 Input Section
+        st.markdown("#### River 2")
+        col_r2_turb, col_r2_poll = st.columns(2)
+        
+        with col_r2_turb:
+            r2_turbidity = st.number_input(
+                "Turbidity (NTU)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(st.session_state.river_2_turbidity),
+                step=0.1,
+                key="input_r2_turbidity",
+                help="Enter turbidity value. Limit: 5 NTU"
+            )
+            st.session_state.river_2_turbidity = r2_turbidity
+        
+        with col_r2_poll:
+            r2_pollutants = st.number_input(
+                "Pollutants (ppm)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(st.session_state.river_2_pollutants),
+                step=0.1,
+                key="input_r2_pollutants",
+                help="Enter pollutants value. Limit: 10 ppm"
+            )
+            st.session_state.river_2_pollutants = r2_pollutants
+        
+        # Status indicator for River 2
+        r2_exceeds = (r2_turbidity > 5) and (r2_pollutants > 10)
+        r2_status_color = "#f59e0b" if r2_exceeds else "#22c55e"
+        r2_status_text = "⚠️ Exceeds Safe Limits" if r2_exceeds else "✅ Within Safe Limits"
+        
+        st.markdown(f"""
+        <div style="padding: 10px; border-radius: 8px; background-color: {r2_status_color}; color: white; text-align: center; margin: 10px 0;">
+            <strong>River 2 Status: {r2_status_text}</strong><br>
+            Turbidity: {r2_turbidity:.1f} NTU | Pollutants: {r2_pollutants:.1f} ppm
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.info("💡 **Note:** Safe limits: Turbidity ≤ 5 NTU, Pollutants ≤ 10 ppm. Check the Live Map tab to see the markers on the map.")
+    
     # comment
     # Footer
     st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: #5a7a52; font-size: 0.85rem; padding: 1rem 0;'>
-        <p><strong>VanaRakshya</strong> • Data refreshed every 10 seconds</p>
-        <p>🌍 Protecting forests through intelligent monitoring</p>
-    </div>
-    """, unsafe_allow_html=True)
+    
 
 except Exception as e:
     st.error(f"⚠️ Error loading data: {str(e)}")
     st.info("Please refresh the page or check your connection.")
     st.exception(e)
+
+# Function to check river status based on turbidity and pollutants
+
+def check_river_status(turbidity, pollutants):
+    if turbidity > 5 or pollutants > 10:
+        return 'orange'  # Exceeds safe levels
+    return 'green'  # Safe levels
+
+# Example values for two rivers
+river1_status = check_river_status(6, 12)  # Example values for river 1
+river2_status = check_river_status(3, 5)    # Example values for river 2

@@ -1,9 +1,9 @@
 /* ======================================================
-   GLOBAL BASE – Soft Cream Canvas
+   GLOBAL BASE – Blue Background
    ====================================================== */
 .stApp {
-    background-color: #F4F1EC !important; /* warm parchment */
-    color: #2C2F33 !important;
+    background-color: #1e3a8a !important; /* blue background */
+    color: #ffffff !important;
 }
 
 /* ======================================================
@@ -12,12 +12,12 @@
 .main-header {
     font-size: 2.2rem;
     font-weight: 700;
-    color: #2B3A2E; /* deep olive */
+    color: #ffffff !important; /* white text for blue background */
     margin-bottom: 4px;
 }
 
 .sub-header {
-    color: #6B756E;
+    color: #e0e7ff;
     font-size: 0.95rem;
     margin-bottom: 2rem;
 }
@@ -171,11 +171,11 @@
 /* Tabs */
 .stTabs [data-baseweb="tab"] {
     font-weight: 600;
-    color: #6B756E;
+    color: #cbd5e1;
 }
 
 .stTabs [aria-selected="true"] {
-    color: #2B3A2E !important;
+    color: #ffffff !important;
 }
 
 /* Dataframes */
