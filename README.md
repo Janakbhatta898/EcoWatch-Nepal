@@ -1,12 +1,4 @@
-# 🔥 VanaRakshya - AI-Powered Forest Conservation System 
-**[Developed for LOCUS HACK-A-WEEK-2026 EVENT - Selected for Finals]**
-
-An intelligent, multi-modal AI application designed for forest rangers and officials to monitor and protect biodiversity in real-time. VanaRakshya detects wildfires, illegal logging, and poaching by analyzing live feeds from drones, GoPros, and CCTVs connected via local WLAN using edge-computing machine learning models.
-
----
-
-## 🙌 Team
-Developed by: **Pratik Karna, Mahesh Panta, Abhyudaya Pokhrel, Aadim Sapkota**
+# 🔥 EcoWatch-Nepal 
 
 ## 🌟 Features
 
@@ -22,7 +14,7 @@ Developed by: **Pratik Karna, Mahesh Panta, Abhyudaya Pokhrel, Aadim Sapkota**
 
 ### 📊 **Incident Analytics**
 - Historical tracking of forest threats and AI detections.
-- Regional distribution analysis (e.g., Chitwan, Bardiya, Parsa forest sectors).
+-
 - Trend visualization to identify high-risk zones over time.
 
 ### 🎥 **Live Surveillance Hub**
@@ -41,7 +33,6 @@ Developed by: **Pratik Karna, Mahesh Panta, Abhyudaya Pokhrel, Aadim Sapkota**
 ### 1. Clone & Install
 ```bash
 # Clone the repository
-git clone [https://github.com/KarnaPratik/Forest-Conservation-System](https://github.com/KarnaPratik/Forest-Conservation-System)
 
 # Navigate to the project directory
 cd Forest-Conservation-System
@@ -53,16 +44,17 @@ streamlit run landingPage.py #to run the landing page
 ```
 ```bash
 #run in separate terminal
-python audio_stream.py #flask app to receive live signal and audio run the inference
+python audio_stream.py 
 ```
 
 ```bash
 
 #run in separate terminal
-python live_stream.py #flask app to recieve live video and audio signal to give bimodal prediction
+python live_stream.py 
 
 
 ```
+
 
 
 
