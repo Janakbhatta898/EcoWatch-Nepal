@@ -48,7 +48,7 @@ cd Forest-Conservation-System
 
 # Install dependencies
 pip install -r requirements.txt
-streamlit run landing_page.py #to run the landing page
+streamlit run landingPage.py #to run the landing page
 
 ```
 ```bash
@@ -63,5 +63,6 @@ python live_stream.py #flask app to recieve live video and audio signal to give 
 
 
 ```
+
 
 
